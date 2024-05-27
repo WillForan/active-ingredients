@@ -1,0 +1,30 @@
+[project]
+name = "active-ingredients"
+version = "0.1.0"
+description = "Add your description here"
+authors = [
+    { name = "WillForan", email = "willforan@gmail.com" }
+]
+dependencies = [
+    "bs4>=0.0.2",
+    "requests>=2.32.2",
+]
+readme = "README.md"
+requires-python = ">= 3.12"
+
+[project.scripts]
+"active-ingredients" = "active_ingredients:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.rye]
+managed = true
+dev-dependencies = []
+
+[tool.hatch.metadata]
+allow-direct-references = true
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/active_ingredients"]
