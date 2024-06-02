@@ -268,3 +268,13 @@ for prod_name, ingredients in prod_ingred.items():
     for ingredient in ingredients:
         iid = con.execute("select rowid from ingredient where iname= ?;", (ingredient,)).fetchone()[0]
         con.execute("INSERT OR IGNORE into ingredient_product(pid,iid) VALUES(?, ?);", (pid, iid))
+
+citric_acid_id = con.execute("select rowid from ingredient where iname='Citric Acid';").fetchone()[0]
+retinol_id = con.execute("select rowid from ingredient where iname='Retinol';").fetchone()[0]
+
+con.execute("INSERT into conflicts (i1,i2,severity,note) values (?,?,?,?)",
+            (citric_acid_id, retinol_id, 5, "okay if hours apart"))
+
+# push changes to disk and close database connection
+con.commit()
+con.close()

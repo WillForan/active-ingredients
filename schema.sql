@@ -19,3 +19,12 @@ create table ingredient_product (
     percent number,
     FOREIGN KEY(iid) REFERENCES ingredient(rowid),
     FOREIGN KEY(pid) REFERENCES product(rowid));
+
+-- conflicts
+create table conflicts (
+    i1 int not null,
+    i2 int not null,
+    severity int CHECK(severity <= 5 and severity >= 0) not null,
+    note text,
+    FOREIGN KEY(i1) REFERENCES ingredient(rowid),
+    FOREIGN KEY(i2) REFERENCES ingredient(rowid));
