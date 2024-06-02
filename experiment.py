@@ -132,8 +132,8 @@ def extract_skincare_products(page_idx: int) -> list:
     """
     base_url = "https://www.sephora.com/shop/skincare?sortBy=TOP_RATED&currentPage="
     base_fname = "cache/saphora/index/"
-    idx_next = cache_soup(f"{base_url}{page_idx}", base_fname + f"{page_idx}.html")
-    pagelist_text = idx1.find("script", id="linkStore").text
+    res_soup = cache_soup(f"{base_url}{page_idx}", base_fname + f"{page_idx}.html")
+    pagelist_text = res_soup.find("script", id="linkStore").text
     pagelist_json = json.loads(pagelist_text)
     products_obj_list = pagelist_json["page"]["nthCategory"]["products"]
     return products_obj_list
@@ -194,22 +194,77 @@ def extract_ingredients(soup):
     return ingredients_flat
 
 
+def saphora_n_total() -> int:
+    """
+    extract total results number from a saphora results page
+    """
+
+    url = "https://www.sephora.com/shop/skincare?sortBy=TOP_RATED&currentPage=1"
+    fname = "cache/saphora/index/1.html"
+    idx1 = cache_soup(url, fname)
+    # total_text = idx1.find('p', {'data-at': 'number_of_products'}).text # 2919 Results
+    # n_total = int(total_text.replace(' Results','')) # 2919
+
+    all_paragraphs = " ".join([x.text for x in idx1.find_all("p", string=True)])
+    totals_match = re.search("([0-9]+)-([0-9]+) of ([0-9]+) Results", all_paragraphs)
+    if not totals_match:
+        raise Exception("saphora results page did not contain text matching total results")
+    #cur_end = int(totals_match.group(2))
+    n_total = int(totals_match.group(3))
+    return n_total
+
 #####  run for all
 # build up product list
+n_total = saphora_n_total() # 2922
 products_obj_list = []
 total_pages = math.ceil(n_total / 60)  # 60 at a time, round up
 for page_idx in range(1, total_pages + 1):  # range ends before max, so +1
+    print(f"# parsingn page {page_idx}")
     products_obj_list += extract_skincare_products(page_idx)
-    break  # don't actually run yet -- remove break to download all
-    time.sleep(1)  # dont spam their server
+    #break  # don't actually run yet -- remove break to download all
 
-# get product ingredients
+## get product ingredients
+# building dictionary like product=>[ingredient1, ingredient2, ...]
+# this is a small dataset. should easily fit into memory.
+# were it much bigger, might want to insert into db instead of into in-memory dictionary
+prod_ingred = dict()
+product_error_list = []
 for product in products_obj_list:
     product_name = re.search("/product/([^?]+)", product["targetUrl"]).group(1)
     fname = "cache/saphora/products/" + product_name + ".html"
     url = "https://www.sephora.com/product/" + product_name
     soup = cache_soup(url, fname)
-    ingredients = extract_ingredients(soup)
+    try:
+        ingredients = extract_ingredients(soup)
+    except Exception as e:
+        print(e)
+        product_error_list.append(product)
+        continue
+    prod_ingred[product_name] = ingredients
     # insert product into db, get rowid
     # upsert ingredient + count
     # insert row: ingredient <-> product join table
+
+
+## connect to database
+import sqlite3
+con = sqlite3.connect("db.sqlite3")
+
+# quick and dumb way to get all products and ingredients into the db
+# NB. db table has option for more info. e.g. product descripton, is ingredient active
+#     the data-structure is only storing names.
+#     would need to rework to insert extra info
+all_prod_names = [(x,) for x in prod_ingred.keys()]; # must be list of tuples for "excute many"
+
+con.executemany("INSERT OR IGNORE into product(pname) VALUES(?);", all_prod_names)
+
+all_ingredients = [ (x,) for x in set(itertools.chain.from_iterable(prod_ingred.values()))]
+con.executemany("INSERT OR IGNORE into ingredient(iname) VALUES(?);", all_ingredients)
+
+# populate join table.
+# to save space (premature optimization!) we're using id number instead of full name for the join table
+for prod_name, ingredients in prod_ingred.items():
+    pid = con.execute("select rowid from product where pname= ?;", (prod_name,)).fetchone()[0]
+    for ingredient in ingredients:
+        iid = con.execute("select rowid from ingredient where iname= ?;", (ingredient,)).fetchone()[0]
+        con.execute("INSERT OR IGNORE into ingredient_product(pid,iid) VALUES(?, ?);", (pid, iid))
